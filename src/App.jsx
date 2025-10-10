@@ -1,5 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X, Moon, Sun, Download, FileText, MapPin, Phone, Mail, ExternalLink } from 'lucide-react';
+import { Menu, X, Moon, Sun, Download, FileText, MapPin, Phone, Mail, ExternalLink, Upload, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
+
+console.log('🔥 APP.JSX LOADED - Version 2.0 - ' + new Date().toISOString());
+
+// Initialize Supabase client
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// 🔍 DEBUG: Check Supabase config on load
+console.group('🔍 Supabase Configuration Check');
+console.log('Supabase URL:', supabaseUrl);
+console.log('Anon key present:', !!supabaseAnonKey);
+console.log('Supabase client created:', !!supabase);
+console.groupEnd();
 
 export default function IlkarianVTC() {
   const [darkMode, setDarkMode] = useState(false);
@@ -8,6 +23,10 @@ export default function IlkarianVTC() {
   const [showApplicationForm, setShowApplicationForm] = useState(false);
   const [showAdmissionForm, setShowAdmissionForm] = useState(false);
   const [formData, setFormData] = useState({});
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState(null);
+  const [formErrors, setFormErrors] = useState({});
 
   useEffect(() => {
     if (darkMode) {
@@ -28,7 +47,7 @@ export default function IlkarianVTC() {
 
   const menuItems = {
     'ABOUT US': {
-      description: 'Ilkarian Vocational Training Centre is a premier private institution dedicated to providing quality vocational education and practical skills training. We empower students with industry-relevant knowledge and hands-on experience.',
+      description: 'Ilkarian Vocational Training Centre is a premier private institution dedicated to providing quality vocational education and practical skills training.',
       links: ['Our Mission', 'Our Vision', 'History', 'Accreditation']
     },
     'PROGRAMS': {
@@ -49,24 +68,340 @@ export default function IlkarianVTC() {
     }
   };
 
+  const validateEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  const validatePhone = (phone) => {
+    return /^(\+254|0)[17]\d{8}$/.test(phone.replace(/\s/g, ''));
+  };
+
+  const validateApplicationForm = () => {
+    const errors = {};
+    
+    if (!formData.firstName?.trim()) errors.firstName = 'First name is required';
+    if (!formData.lastName?.trim()) errors.lastName = 'Last name is required';
+    if (!formData.email?.trim()) {
+      errors.email = 'Email is required';
+    } else if (!validateEmail(formData.email)) {
+      errors.email = 'Invalid email format';
+    }
+    if (!formData.phone?.trim()) {
+      errors.phone = 'Phone number is required';
+    } else if (!validatePhone(formData.phone)) {
+      errors.phone = 'Invalid phone format (use +254 or 07/01)';
+    }
+    if (!formData.idNumber?.trim()) errors.idNumber = 'ID/Passport number is required';
+    if (!formData.program) errors.program = 'Please select a program';
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validateAdmissionForm = () => {
+    const errors = {};
+    
+    if (!formData.refNumber?.trim()) errors.refNumber = 'Reference number is required';
+    if (!formData.fullName?.trim()) errors.fullName = 'Full name is required';
+    if (!formData.admissionEmail?.trim()) {
+      errors.admissionEmail = 'Email is required';
+    } else if (!validateEmail(formData.admissionEmail)) {
+      errors.admissionEmail = 'Invalid email format';
+    }
+    if (uploadedFiles.length === 0) {
+      errors.files = 'Please upload at least one document';
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // ✅ FIXED: Don't update formErrors on every keystroke - only clear the specific error
   const handleInputChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Only clear the error for this specific field, don't trigger re-render of errors object unless needed
+    if (formErrors[name]) {
+      setFormErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
   };
 
-  const handleApplicationSubmit = (e) => {
-    e.preventDefault();
-    console.log('Application submitted:', formData);
-    alert('APPLICATION SUBMITTED SUCCESSFULLY! We will contact you soon.');
-    setShowApplicationForm(false);
-    setFormData({});
+  const handleFileUpload = async (e) => {
+    const files = Array.from(e.target.files);
+    const maxSize = 10 * 1024 * 1024;
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+    
+    const validFiles = files.filter(file => {
+      if (file.size > maxSize) {
+        alert(`${file.name} is too large. Max size is 10MB.`);
+        return false;
+      }
+      if (!allowedTypes.includes(file.type)) {
+        alert(`${file.name} has invalid format. Use PDF, JPG, or PNG.`);
+        return false;
+      }
+      return true;
+    });
+
+    setUploadedFiles(prev => [...prev, ...validFiles]);
+    if (formErrors.files) {
+      setFormErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.files;
+        return newErrors;
+      });
+    }
   };
 
-  const handleAdmissionSubmit = (e) => {
+  const removeFile = (index) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadFilesToSupabase = async (files) => {
+    const uploadedUrls = [];
+    
+    for (const file of files) {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const filePath = `documents/${fileName}`;
+
+      const { data: _data, error } = await supabase.storage
+        .from('application-documents')
+        .upload(filePath, file);
+
+      if (error) {
+        console.error('Upload error:', error);
+        throw new Error(`Failed to upload ${file.name}`);
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('application-documents')
+        .getPublicUrl(filePath);
+
+      uploadedUrls.push({
+        name: file.name,
+        url: urlData.publicUrl,
+        path: filePath
+      });
+    }
+
+    return uploadedUrls;
+  };
+
+  const handleApplicationSubmit = async (e) => {
     e.preventDefault();
-    console.log('Admission request submitted:', formData);
-    alert('ADMISSION REQUEST SUBMITTED! Please check your email for further instructions.');
-    setShowAdmissionForm(false);
-    setFormData({});
+    
+    if (!validateApplicationForm()) {
+      setSubmitStatus({ type: 'error', message: 'Please fix the errors above' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitStatus(null);
+
+    // 🔍 DEBUG: Log what we're about to submit
+    console.group('📦 Application Submission Started');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('Form data:', formData);
+    console.groupEnd();
+
+    try {
+      console.time('⏱️ Application insert operation');
+      
+      const { data, error } = await supabase
+        .from('applications')
+        .insert([
+          {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            email: formData.email,
+            phone: formData.phone,
+            id_number: formData.idNumber,
+            program: formData.program,
+            motivation: formData.motivation || '',
+            status: 'pending'
+          }
+        ])
+        .select();
+
+      console.timeEnd('⏱️ Application insert operation');
+
+      if (error) {
+        // 🔍 DEBUG: Detailed error logging
+        console.group('❌ Application Insert Error');
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', error.details);
+        console.error('Full error object:', error);
+        
+        if (error.code === '401' || error.code === '403' || error.code === 'PGRST301' || error.code === '42501') {
+          console.error('💡 RLS POLICY ISSUE DETECTED!');
+          console.error('Solution: Run this SQL in Supabase Dashboard → SQL Editor:');
+          console.error(`
+CREATE POLICY "Allow anonymous application submissions"
+ON applications
+FOR INSERT
+TO anon
+WITH CHECK (true);
+          `);
+        }
+        console.groupEnd();
+        
+        throw error;
+      }
+
+      console.log('✅ Application submitted successfully!', data);
+
+      setSubmitStatus({ 
+        type: 'success', 
+        message: 'Application submitted successfully! We will contact you soon.' 
+      });
+      
+      setTimeout(() => {
+        setShowApplicationForm(false);
+        setFormData({});
+        setSubmitStatus(null);
+        setFormErrors({});
+      }, 3000);
+
+    } catch (error) {
+      console.group('❌ Application submission failed - DETAILED ERROR');
+      console.error('Raw error object:', error);
+      console.error('Error stringified:', JSON.stringify(error, null, 2));
+      console.error('Error code:', error?.code);
+      console.error('Error message:', error?.message);
+      console.error('Error details:', error?.details);
+      console.error('Error hint:', error?.hint);
+      console.error('Error status:', error?.status);
+      console.error('Error statusCode:', error?.statusCode);
+      console.groupEnd();
+      
+      let errorMessage = 'Failed to submit application. ';
+      
+      // Check multiple possible error code properties
+      const errorCode = error?.code || error?.statusCode || error?.status;
+      
+      if (errorCode === '401' || errorCode === 401 || 
+          errorCode === '403' || errorCode === 403 || 
+          errorCode === 'PGRST301' || errorCode === '42501') {
+        errorMessage += 'Permission denied. ';
+        console.error('🔒 RLS POLICY BLOCKING! Run the SQL fix in Supabase Dashboard.');
+      } else {
+        errorMessage += (error?.message || error?.error_description || 'Please try again.');
+      }
+      
+      setSubmitStatus({ 
+        type: 'error', 
+        message: errorMessage
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAdmissionSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateAdmissionForm()) {
+      setSubmitStatus({ type: 'error', message: 'Please fix the errors above' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitStatus(null);
+
+    // 🔍 DEBUG: Log what we're about to submit
+    console.group('📦 Admission Submission Started');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('Form data:', formData);
+    console.log('Files to upload:', uploadedFiles.length);
+    console.groupEnd();
+
+    try {
+      console.time('⏱️ File upload operation');
+      const documentUrls = await uploadFilesToSupabase(uploadedFiles);
+      console.timeEnd('⏱️ File upload operation');
+      console.log('✅ Files uploaded:', documentUrls);
+
+      console.time('⏱️ Admission insert operation');
+      const { data, error } = await supabase
+        .from('admissions')
+        .insert([
+          {
+            ref_number: formData.refNumber,
+            full_name: formData.fullName,
+            email: formData.admissionEmail,
+            documents_uploaded: true,
+            document_urls: documentUrls,
+            status: 'pending'
+          }
+        ])
+        .select();
+
+      console.timeEnd('⏱️ Admission insert operation');
+
+      if (error) {
+        // 🔍 DEBUG: Detailed error logging
+        console.group('❌ Admission Insert Error');
+        console.error('Error code:', error.code);
+        console.error('Error message:', error.message);
+        console.error('Error details:', error.details);
+        console.error('Full error object:', error);
+        
+        if (error.code === '401' || error.code === '403' || error.code === 'PGRST301' || error.code === '42501') {
+          console.error('💡 RLS POLICY ISSUE DETECTED!');
+          console.error('Solution: Run this SQL in Supabase Dashboard → SQL Editor:');
+          console.error(`
+CREATE POLICY "Allow anonymous admission submissions"
+ON admissions
+FOR INSERT
+TO anon
+WITH CHECK (true);
+          `);
+        }
+        console.groupEnd();
+        
+        throw error;
+      }
+
+      console.log('✅ Admission submitted successfully!', data);
+
+      setSubmitStatus({ 
+        type: 'success', 
+        message: 'Admission request submitted! Check your email for further instructions.' 
+      });
+      
+      setTimeout(() => {
+        setShowAdmissionForm(false);
+        setFormData({});
+        setUploadedFiles([]);
+        setSubmitStatus(null);
+        setFormErrors({});
+      }, 3000);
+
+    } catch (error) {
+      console.error('❌ Admission submission failed:', error);
+      
+      let errorMessage = 'Failed to submit admission request. ';
+      
+      if (error.code === '401' || error.code === '403' || error.code === 'PGRST301' || error.code === '42501') {
+        errorMessage += 'Permission denied. Please contact support.';
+      } else {
+        errorMessage += error.message || 'Please try again.';
+      }
+      
+      setSubmitStatus({ 
+        type: 'error', 
+        message: errorMessage
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const ApplicationForm = () => (
@@ -74,92 +409,178 @@ export default function IlkarianVTC() {
       <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full my-8 p-8">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">APPLICATION FORM</h2>
-          <button onClick={() => setShowApplicationForm(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+          <button 
+            onClick={() => {
+              setShowApplicationForm(false);
+              setFormData({});
+              setFormErrors({});
+              setSubmitStatus(null);
+            }} 
+            className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            disabled={isSubmitting}
+          >
             <X size={24} />
           </button>
         </div>
         
-        <div className="space-y-4">
+        {submitStatus && (
+          <div className={`mb-4 p-4 rounded-lg flex items-center gap-2 ${
+            submitStatus.type === 'success' 
+              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+          }`}>
+            {submitStatus.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+            <span>{submitStatus.message}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleApplicationSubmit} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input 
-              type="text" 
-              name="firstName"
-              placeholder="First Name *" 
-              onChange={handleInputChange}
-              className="p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-            />
-            <input 
-              type="text" 
-              name="lastName"
-              placeholder="Last Name *" 
-              onChange={handleInputChange}
-              className="p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-            />
+            <div>
+              <input 
+                type="text" 
+                name="firstName"
+                value={formData.firstName || ''}
+                placeholder="First Name *" 
+                onChange={handleInputChange}
+                className={`w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                  formErrors.firstName ? 'border-red-500' : ''
+                }`}
+                disabled={isSubmitting}
+              />
+              {formErrors.firstName && (
+                <p className="text-red-500 text-sm mt-1">{formErrors.firstName}</p>
+              )}
+            </div>
+            <div>
+              <input 
+                type="text" 
+                name="lastName"
+                value={formData.lastName || ''}
+                placeholder="Last Name *" 
+                onChange={handleInputChange}
+                className={`w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                  formErrors.lastName ? 'border-red-500' : ''
+                }`}
+                disabled={isSubmitting}
+              />
+              {formErrors.lastName && (
+                <p className="text-red-500 text-sm mt-1">{formErrors.lastName}</p>
+              )}
+            </div>
           </div>
           
-          <input 
-            type="email" 
-            name="email"
-            placeholder="Email Address *" 
-            onChange={handleInputChange}
-            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-          />
-          <input 
-            type="tel" 
-            name="phone"
-            placeholder="Phone Number *" 
-            onChange={handleInputChange}
-            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-          />
-          <input 
-            type="text" 
-            name="idNumber"
-            placeholder="ID/Passport Number *" 
-            onChange={handleInputChange}
-            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-          />
+          <div>
+            <input 
+              type="email" 
+              name="email"
+              value={formData.email || ''}
+              placeholder="Email Address *" 
+              onChange={handleInputChange}
+              className={`w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                formErrors.email ? 'border-red-500' : ''
+              }`}
+              disabled={isSubmitting}
+            />
+            {formErrors.email && (
+              <p className="text-red-500 text-sm mt-1">{formErrors.email}</p>
+            )}
+          </div>
+
+          <div>
+            <input 
+              type="tel" 
+              name="phone"
+              value={formData.phone || ''}
+              placeholder="Phone Number (e.g., +254712345678) *" 
+              onChange={handleInputChange}
+              className={`w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                formErrors.phone ? 'border-red-500' : ''
+              }`}
+              disabled={isSubmitting}
+            />
+            {formErrors.phone && (
+              <p className="text-red-500 text-sm mt-1">{formErrors.phone}</p>
+            )}
+          </div>
+
+          <div>
+            <input 
+              type="text" 
+              name="idNumber"
+              value={formData.idNumber || ''}
+              placeholder="ID/Passport Number *" 
+              onChange={handleInputChange}
+              className={`w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                formErrors.idNumber ? 'border-red-500' : ''
+              }`}
+              disabled={isSubmitting}
+            />
+            {formErrors.idNumber && (
+              <p className="text-red-500 text-sm mt-1">{formErrors.idNumber}</p>
+            )}
+          </div>
           
-          <select 
-            name="program"
-            onChange={handleInputChange}
-            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-          >
-            <option value="">Select Program *</option>
-            {programs.map((program, idx) => (
-              <option key={idx} value={program.name}>{program.name}</option>
-            ))}
-          </select>
+          <div>
+            <select 
+              name="program"
+              value={formData.program || ''}
+              onChange={handleInputChange}
+              className={`w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                formErrors.program ? 'border-red-500' : ''
+              }`}
+              disabled={isSubmitting}
+            >
+              <option value="">Select Program *</option>
+              {programs.map((program, idx) => (
+                <option key={idx} value={program.name}>{program.name}</option>
+              ))}
+            </select>
+            {formErrors.program && (
+              <p className="text-red-500 text-sm mt-1">{formErrors.program}</p>
+            )}
+          </div>
           
           <textarea 
             name="motivation"
-            placeholder="Why do you want to join this program?" 
+            value={formData.motivation || ''}
+            placeholder="Why do you want to join this program? (Optional)" 
             rows={4}
             onChange={handleInputChange}
             className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            disabled={isSubmitting}
           />
           
           <div className="flex gap-4">
             <button 
-              onClick={handleApplicationSubmit}
-              className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold"
+              type="submit"
+              disabled={isSubmitting}
+              className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              SUBMIT APPLICATION
+              {isSubmitting ? (
+                <>
+                  <Loader className="animate-spin" size={20} />
+                  SUBMITTING...
+                </>
+              ) : (
+                'SUBMIT APPLICATION'
+              )}
             </button>
             <button 
-              onClick={() => setShowApplicationForm(false)}
-              className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-white py-3 rounded-lg hover:bg-gray-400 transition font-semibold"
+              type="button"
+              onClick={() => {
+                setShowApplicationForm(false);
+                setFormData({});
+                setFormErrors({});
+                setSubmitStatus(null);
+              }}
+              disabled={isSubmitting}
+              className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-white py-3 rounded-lg hover:bg-gray-400 transition font-semibold disabled:opacity-50"
             >
               CANCEL
             </button>
           </div>
-        </div>
-        
-        <div className="mt-6 pt-6 border-t dark:border-gray-700">
-          <button className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:underline font-semibold">
-            <Download size={20} />
-            DOWNLOAD APPLICATION FORM (PDF)
-          </button>
-        </div>
+        </form>
       </div>
     </div>
   );
@@ -169,33 +590,83 @@ export default function IlkarianVTC() {
       <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full my-8 p-8">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">ADMISSION LETTER REQUEST</h2>
-          <button onClick={() => setShowAdmissionForm(false)} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+          <button 
+            onClick={() => {
+              setShowAdmissionForm(false);
+              setFormData({});
+              setUploadedFiles([]);
+              setFormErrors({});
+              setSubmitStatus(null);
+            }} 
+            className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            disabled={isSubmitting}
+          >
             <X size={24} />
           </button>
         </div>
         
-        <div className="space-y-4">
-          <input 
-            type="text" 
-            name="refNumber"
-            placeholder="Application Reference Number *" 
-            onChange={handleInputChange}
-            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-          />
-          <input 
-            type="text" 
-            name="fullName"
-            placeholder="Full Name *" 
-            onChange={handleInputChange}
-            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-          />
-          <input 
-            type="email" 
-            name="admissionEmail"
-            placeholder="Email Address *" 
-            onChange={handleInputChange}
-            className="w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white" 
-          />
+        {submitStatus && (
+          <div className={`mb-4 p-4 rounded-lg flex items-center gap-2 ${
+            submitStatus.type === 'success' 
+              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' 
+              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+          }`}>
+            {submitStatus.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+            <span>{submitStatus.message}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleAdmissionSubmit} className="space-y-4">
+          <div>
+            <input 
+              type="text" 
+              name="refNumber"
+              value={formData.refNumber || ''}
+              placeholder="Application Reference Number *" 
+              onChange={handleInputChange}
+              className={`w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                formErrors.refNumber ? 'border-red-500' : ''
+              }`}
+              disabled={isSubmitting}
+            />
+            {formErrors.refNumber && (
+              <p className="text-red-500 text-sm mt-1">{formErrors.refNumber}</p>
+            )}
+          </div>
+
+          <div>
+            <input 
+              type="text" 
+              name="fullName"
+              value={formData.fullName || ''}
+              placeholder="Full Name *" 
+              onChange={handleInputChange}
+              className={`w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                formErrors.fullName ? 'border-red-500' : ''
+              }`}
+              disabled={isSubmitting}
+            />
+            {formErrors.fullName && (
+              <p className="text-red-500 text-sm mt-1">{formErrors.fullName}</p>
+            )}
+          </div>
+
+          <div>
+            <input 
+              type="email" 
+              name="admissionEmail"
+              value={formData.admissionEmail || ''}
+              placeholder="Email Address *" 
+              onChange={handleInputChange}
+              className={`w-full p-3 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white ${
+                formErrors.admissionEmail ? 'border-red-500' : ''
+              }`}
+              disabled={isSubmitting}
+            />
+            {formErrors.admissionEmail && (
+              <p className="text-red-500 text-sm mt-1">{formErrors.admissionEmail}</p>
+            )}
+          </div>
           
           <div className="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg">
             <p className="text-sm text-blue-800 dark:text-blue-200">
@@ -203,34 +674,82 @@ export default function IlkarianVTC() {
             </p>
           </div>
           
-          <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 transition">
-            <FileText className="mx-auto mb-2 text-gray-400" size={48} />
-            <p className="text-gray-600 dark:text-gray-400">Click to upload documents or drag and drop</p>
-            <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">PDF, JPG, PNG (Max 10MB)</p>
+          <div>
+            <label className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-blue-500 transition block ${
+              formErrors.files ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
+            }`}>
+              <input 
+                type="file" 
+                multiple 
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleFileUpload}
+                className="hidden"
+                disabled={isSubmitting}
+              />
+              <Upload className="mx-auto mb-2 text-gray-400" size={48} />
+              <p className="text-gray-600 dark:text-gray-400">Click to upload documents or drag and drop</p>
+              <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">PDF, JPG, PNG (Max 10MB per file)</p>
+            </label>
+            {formErrors.files && (
+              <p className="text-red-500 text-sm mt-1">{formErrors.files}</p>
+            )}
           </div>
+
+          {uploadedFiles.length > 0 && (
+            <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+              <h4 className="font-semibold mb-2">Uploaded Files ({uploadedFiles.length}):</h4>
+              <ul className="space-y-2">
+                {uploadedFiles.map((file, idx) => (
+                  <li key={idx} className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2">
+                      <FileText size={16} />
+                      {file.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(idx)}
+                      className="text-red-500 hover:text-red-700"
+                      disabled={isSubmitting}
+                    >
+                      <X size={16} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           
           <div className="flex gap-4">
             <button 
-              onClick={handleAdmissionSubmit}
-              className="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition font-semibold"
+              type="submit"
+              disabled={isSubmitting}
+              className="flex-1 bg-green-600 text-white py-3 rounded-lg hover:bg-green-700 transition font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              SUBMIT FOR ADMISSION
+              {isSubmitting ? (
+                <>
+                  <Loader className="animate-spin" size={20} />
+                  UPLOADING...
+                </>
+              ) : (
+                'SUBMIT FOR ADMISSION'
+              )}
             </button>
             <button 
-              onClick={() => setShowAdmissionForm(false)}
-              className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-white py-3 rounded-lg hover:bg-gray-400 transition font-semibold"
+              type="button"
+              onClick={() => {
+                setShowAdmissionForm(false);
+                setFormData({});
+                setUploadedFiles([]);
+                setFormErrors({});
+                setSubmitStatus(null);
+              }}
+              disabled={isSubmitting}
+              className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-white py-3 rounded-lg hover:bg-gray-400 transition font-semibold disabled:opacity-50"
             >
               CANCEL
             </button>
           </div>
-        </div>
-        
-        <div className="mt-6 pt-6 border-t dark:border-gray-700">
-          <button className="flex items-center gap-2 text-green-600 dark:text-green-400 hover:underline font-semibold">
-            <Download size={20} />
-            DOWNLOAD ADMISSION FORM (PDF)
-          </button>
-        </div>
+        </form>
       </div>
     </div>
   );
@@ -239,11 +758,9 @@ export default function IlkarianVTC() {
     <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
       <div className="bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
         
-        {/* Header */}
         <header className="sticky top-0 z-40 bg-white dark:bg-gray-900 shadow-md">
           <div className="container mx-auto px-4 py-4">
             <div className="flex justify-between items-center">
-              {/* Logo */}
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-lg">
                   IVTC
@@ -254,20 +771,17 @@ export default function IlkarianVTC() {
                 </div>
               </div>
 
-              {/* Desktop Actions */}
               <div className="hidden lg:flex items-center gap-4">
                 <button onClick={() => setDarkMode(!darkMode)} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition">
                   {darkMode ? <Sun size={20} /> : <Moon size={20} />}
                 </button>
               </div>
 
-              {/* Mobile Menu Button */}
               <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="lg:hidden p-2">
                 {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
               </button>
             </div>
 
-            {/* Desktop Navigation */}
             <nav className="hidden lg:flex gap-1 mt-4 flex-wrap">
               {Object.keys(menuItems).map((item) => (
                 <div
@@ -298,7 +812,6 @@ export default function IlkarianVTC() {
               ))}
             </nav>
 
-            {/* Mobile Navigation */}
             {mobileMenuOpen && (
               <nav className="lg:hidden mt-4 pb-4 space-y-2">
                 {Object.keys(menuItems).map((item) => (
@@ -317,7 +830,6 @@ export default function IlkarianVTC() {
           </div>
         </header>
 
-        {/* Hero Section */}
         <section className="relative h-[600px] flex items-center justify-center bg-gradient-to-r from-blue-900 via-blue-800 to-blue-700">
           <div className="absolute inset-0 bg-black opacity-40"></div>
           <div className="absolute inset-0" style={{
@@ -345,12 +857,10 @@ export default function IlkarianVTC() {
           </div>
         </section>
 
-        {/* Requirements Section with Image Placeholder */}
         <section className="py-16 bg-gray-50 dark:bg-gray-800">
           <div className="container mx-auto px-4">
             <h2 className="text-4xl font-bold text-center mb-12">ADMISSION REQUIREMENTS</h2>
             <div className="max-w-4xl mx-auto bg-white dark:bg-gray-700 rounded-lg shadow-lg p-8">
-              {/* Placeholder for uploaded image */}
               <div className="mb-8 rounded-lg overflow-hidden shadow-lg">
                 <img 
                   src="https://i.ibb.co/VcXR4zsG/20231021-160826.jpg"
@@ -383,7 +893,6 @@ export default function IlkarianVTC() {
           </div>
         </section>
 
-        {/* Programs Section */}
         <section className="py-16 bg-white dark:bg-gray-900">
           <div className="container mx-auto px-4">
             <h2 className="text-4xl font-bold text-center mb-4">OUR PROGRAMS</h2>
@@ -412,7 +921,6 @@ export default function IlkarianVTC() {
           </div>
         </section>
 
-        {/* Why Choose Us */}
         <section className="py-16 bg-blue-600 text-white">
           <div className="container mx-auto px-4">
             <h2 className="text-4xl font-bold text-center mb-12">WHY CHOOSE ILKARIAN VTC?</h2>
@@ -442,7 +950,6 @@ export default function IlkarianVTC() {
           </div>
         </section>
 
-        {/* Contact Section */}
         <section className="py-16 bg-gray-50 dark:bg-gray-800">
           <div className="container mx-auto px-4">
             <h2 className="text-4xl font-bold text-center mb-12">GET IN TOUCH</h2>
@@ -469,7 +976,6 @@ export default function IlkarianVTC() {
           </div>
         </section>
 
-        {/* External Links Section */}
         <section className="py-16 bg-blue-900 text-white">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl font-bold text-center mb-8">RELATED INSTITUTIONS & RESOURCES</h2>
@@ -497,7 +1003,6 @@ export default function IlkarianVTC() {
           </div>
         </section>
 
-        {/* Footer */}
         <footer className="bg-gray-900 text-white py-12">
           <div className="container mx-auto px-4">
             <div className="grid md:grid-cols-3 gap-8 mb-8">
@@ -536,10 +1041,35 @@ export default function IlkarianVTC() {
           </div>
         </footer>
 
-        {/* Forms */}
         {showApplicationForm && <ApplicationForm />}
         {showAdmissionForm && <AdmissionForm />}
       </div>
+
+      {/* Add this inside your return statement, somewhere visible */}
+      <button 
+        onClick={async () => {
+          console.group('🧪 SUPABASE CONNECTION TEST');
+          console.log('URL:', import.meta.env.VITE_SUPABASE_URL);
+          console.log('Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
+    
+          try {
+            const { data, error, count } = await supabase
+              .from('applications')
+              .select('*', { count: 'exact', head: false })
+              .limit(1);
+      
+            console.log('Test query result:', { data, error, count });
+            alert(`Connection ${error ? 'FAILED' : 'SUCCESS'}! Check console.`);
+          } catch (err) {
+            console.error('Test failed:', err);
+            alert('Connection FAILED! Check console.');
+          }
+          console.groupEnd();
+        }}
+        className="fixed bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded z-50"
+      >
+        TEST DB
+      </button>
     </div>
   );
 }

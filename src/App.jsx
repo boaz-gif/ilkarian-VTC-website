@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Menu, X, Moon, Sun, Download, FileText, MapPin, Phone, Mail, ExternalLink, Upload, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
@@ -16,6 +16,39 @@ console.log('Anon key present:', !!supabaseAnonKey);
 console.log('Supabase client created:', !!supabase);
 console.groupEnd();
 
+// Memoize static data to prevent recreation on every render
+const PROGRAMS = [
+  { name: 'HOSPITALITY & HOTEL MANAGEMENT', duration: '6 Months', level: 'Certificate' },
+  { name: 'INFORMATION TECHNOLOGY', duration: '6 Months', level: 'Certificate' },
+  { name: 'FASHION & DESIGN', duration: '6 Months', level: 'Certificate' },
+  { name: 'ELECTRICAL INSTALLATION', duration: '6 Months', level: 'Certificate' },
+  { name: 'PLUMBING', duration: '6 Months', level: 'Certificate' },
+  { name: 'WELDING & FABRICATION', duration: '6 Months', level: 'Certificate' },
+];
+
+const MENU_ITEMS = {
+  'ABOUT US': {
+    description: 'Ilkarian Vocational Training Centre is a premier private institution dedicated to providing quality vocational education and practical skills training.',
+    links: ['Our Mission', 'Our Vision', 'History', 'Accreditation']
+  },
+  'PROGRAMS': {
+    description: 'We offer comprehensive vocational training programs designed to meet industry standards and prepare students for successful careers.',
+    links: PROGRAMS.map(p => p.name)
+  },
+  'REQUIREMENTS': {
+    description: 'Admission requirements include a minimum of KCPE certificate, completed application, 2 passport photos, and birth certificate copy.',
+    links: ['General Requirements', 'Program-Specific Requirements', 'International Students']
+  },
+  'CONTACT': {
+    description: 'Get in touch with us for inquiries, admissions information, or to schedule a campus visit.',
+    links: ['Phone: +254 XXX XXX XXX', 'Email: info@ilkarianvtc.ac.ke', 'Location: Nairobi, Kenya']
+  },
+  'VISIT US': {
+    description: 'Schedule a visit to our modern campus facilities. See our workshops, labs, and meet our experienced instructors.',
+    links: ['Schedule a Visit', 'Virtual Tour', 'Directions', 'Campus Map']
+  }
+};
+
 export default function IlkarianVTC() {
   const [darkMode, setDarkMode] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -27,6 +60,9 @@ export default function IlkarianVTC() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null);
   const [formErrors, setFormErrors] = useState({});
+  
+  // Refs to track timeouts for debouncing
+  const validationTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (darkMode) {
@@ -36,47 +72,17 @@ export default function IlkarianVTC() {
     }
   }, [darkMode]);
 
-  const programs = [
-    { name: 'HOSPITALITY & HOTEL MANAGEMENT', duration: '6 Months', level: 'Certificate' },
-    { name: 'INFORMATION TECHNOLOGY', duration: '6 Months', level: 'Certificate' },
-    { name: 'FASHION & DESIGN', duration: '6 Months', level: 'Certificate' },
-    { name: 'ELECTRICAL INSTALLATION', duration: '6 Months', level: 'Certificate' },
-    { name: 'PLUMBING', duration: '6 Months', level: 'Certificate' },
-    { name: 'WELDING & FABRICATION', duration: '6 Months', level: 'Certificate' },
-  ];
-
-  const menuItems = {
-    'ABOUT US': {
-      description: 'Ilkarian Vocational Training Centre is a premier private institution dedicated to providing quality vocational education and practical skills training.',
-      links: ['Our Mission', 'Our Vision', 'History', 'Accreditation']
-    },
-    'PROGRAMS': {
-      description: 'We offer comprehensive vocational training programs designed to meet industry standards and prepare students for successful careers.',
-      links: programs.map(p => p.name)
-    },
-    'REQUIREMENTS': {
-      description: 'Admission requirements include a minimum of KCPE certificate, completed application, 2 passport photos, and birth certificate copy.',
-      links: ['General Requirements', 'Program-Specific Requirements', 'International Students']
-    },
-    'CONTACT': {
-      description: 'Get in touch with us for inquiries, admissions information, or to schedule a campus visit.',
-      links: ['Phone: +254 XXX XXX XXX', 'Email: info@ilkarianvtc.ac.ke', 'Location: Nairobi, Kenya']
-    },
-    'VISIT US': {
-      description: 'Schedule a visit to our modern campus facilities. See our workshops, labs, and meet our experienced instructors.',
-      links: ['Schedule a Visit', 'Virtual Tour', 'Directions', 'Campus Map']
-    }
-  };
-
-  const validateEmail = (email) => {
+  // Memoize validation functions to prevent recreation on every render
+  const validateEmail = useCallback((email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
+  }, []);
 
-  const validatePhone = (phone) => {
+  const validatePhone = useCallback((phone) => {
     return /^(\+254|0)[17]\d{8}$/.test(phone.replace(/\s/g, ''));
-  };
+  }, []);
 
-  const validateApplicationForm = () => {
+  // Memoize form validation functions
+  const validateApplicationForm = useCallback(() => {
     const errors = {};
     
     if (!formData.firstName?.trim()) errors.firstName = 'First name is required';
@@ -96,9 +102,9 @@ export default function IlkarianVTC() {
     
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
-  };
+  }, [formData, validateEmail, validatePhone]);
 
-  const validateAdmissionForm = () => {
+  const validateAdmissionForm = useCallback(() => {
     const errors = {};
     
     if (!formData.refNumber?.trim()) errors.refNumber = 'Reference number is required';
@@ -114,55 +120,71 @@ export default function IlkarianVTC() {
     
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
-  };
+  }, [formData, uploadedFiles, validateEmail]);
 
-  // ✅ FIXED: Don't update formErrors on every keystroke - only clear the specific error
-  const handleInputChange = (e) => {
+  // Optimized input change handler with debouncing for error clearing
+  const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    
-    // Only clear the error for this specific field, don't trigger re-render of errors object unless needed
-    if (formErrors[name]) {
-      setFormErrors(prev => {
+    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    if (validationTimeoutRef.current) {
+      clearTimeout(validationTimeoutRef.current);
+    }
+
+    validationTimeoutRef.current = setTimeout(() => {
+      setFormErrors((prev) => {
         const newErrors = { ...prev };
-        delete newErrors[name];
+        if (name === 'email' && !validateEmail(value)) {
+          newErrors.email = 'Invalid email format';
+        } else if (name === 'phone' && !validatePhone(value)) {
+          newErrors.phone = 'Invalid phone format';
+        } else {
+          delete newErrors[name];
+        }
         return newErrors;
       });
-    }
-  };
+    }, 300);
+  }, [validateEmail, validatePhone]);
 
-  const handleFileUpload = async (e) => {
+  // Optimized file upload handler
+  const handleFileUpload = useCallback((e) => {
     const files = Array.from(e.target.files);
     const maxSize = 10 * 1024 * 1024;
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
     
-    const validFiles = files.filter(file => {
-      if (file.size > maxSize) {
-        alert(`${file.name} is too large. Max size is 10MB.`);
-        return false;
-      }
-      if (!allowedTypes.includes(file.type)) {
-        alert(`${file.name} has invalid format. Use PDF, JPG, or PNG.`);
-        return false;
-      }
-      return true;
-    });
-
-    setUploadedFiles(prev => [...prev, ...validFiles]);
-    if (formErrors.files) {
-      setFormErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors.files;
-        return newErrors;
+    // Process files in a separate task to avoid blocking the main thread
+    setTimeout(() => {
+      const validFiles = files.filter(file => {
+        if (file.size > maxSize) {
+          alert(`${file.name} is too large. Max size is 10MB.`);
+          return false;
+        }
+        if (!allowedTypes.includes(file.type)) {
+          alert(`${file.name} has invalid format. Use PDF, JPG, or PNG.`);
+          return false;
+        }
+        return true;
       });
-    }
-  };
 
-  const removeFile = (index) => {
+      setUploadedFiles(prev => [...prev, ...validFiles]);
+      
+      if (formErrors.files) {
+        setFormErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors.files;
+          return newErrors;
+        });
+      }
+    }, 0);
+  }, [formErrors.files]);
+
+  // Optimized file removal handler
+  const removeFile = useCallback((index) => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== index));
-  };
+  }, []);
 
-  const uploadFilesToSupabase = async (files) => {
+  // Optimized file upload to Supabase
+  const uploadFilesToSupabase = useCallback(async (files) => {
     const uploadedUrls = [];
     
     for (const file of files) {
@@ -191,9 +213,10 @@ export default function IlkarianVTC() {
     }
 
     return uploadedUrls;
-  };
+  }, []);
 
-  const handleApplicationSubmit = async (e) => {
+  // Optimized application submit handler
+  const handleApplicationSubmit = useCallback(async (e) => {
     e.preventDefault();
     
     if (!validateApplicationForm()) {
@@ -262,6 +285,7 @@ WITH CHECK (true);
         message: 'Application submitted successfully! We will contact you soon.' 
       });
       
+      // Use setTimeout to avoid blocking the main thread during state updates
       setTimeout(() => {
         setShowApplicationForm(false);
         setFormData({});
@@ -302,9 +326,10 @@ WITH CHECK (true);
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [formData, validateApplicationForm]);
 
-  const handleAdmissionSubmit = async (e) => {
+  // Optimized admission submit handler
+  const handleAdmissionSubmit = useCallback(async (e) => {
     e.preventDefault();
     
     if (!validateAdmissionForm()) {
@@ -376,6 +401,7 @@ WITH CHECK (true);
         message: 'Admission request submitted! Check your email for further instructions.' 
       });
       
+      // Use setTimeout to avoid blocking the main thread during state updates
       setTimeout(() => {
         setShowAdmissionForm(false);
         setFormData({});
@@ -402,9 +428,10 @@ WITH CHECK (true);
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [formData, uploadedFiles, validateAdmissionForm, uploadFilesToSupabase]);
 
-  const ApplicationForm = () => (
+  // Memoize form components to prevent unnecessary re-renders
+  const ApplicationForm = useMemo(() => (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full my-8 p-8">
         <div className="flex justify-between items-center mb-6">
@@ -532,7 +559,7 @@ WITH CHECK (true);
               disabled={isSubmitting}
             >
               <option value="">Select Program *</option>
-              {programs.map((program, idx) => (
+              {PROGRAMS.map((program, idx) => (
                 <option key={idx} value={program.name}>{program.name}</option>
               ))}
             </select>
@@ -583,9 +610,9 @@ WITH CHECK (true);
         </form>
       </div>
     </div>
-  );
+  ), [formData, formErrors, isSubmitting, submitStatus, handleInputChange, handleApplicationSubmit]);
 
-  const AdmissionForm = () => (
+  const AdmissionForm = useMemo(() => (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div className="bg-white dark:bg-gray-800 rounded-lg max-w-2xl w-full my-8 p-8">
         <div className="flex justify-between items-center mb-6">
@@ -752,7 +779,80 @@ WITH CHECK (true);
         </form>
       </div>
     </div>
-  );
+  ), [formData, formErrors, isSubmitting, submitStatus, uploadedFiles, handleInputChange, handleFileUpload, removeFile, handleAdmissionSubmit]);
+
+  // Memoize the navigation component to prevent unnecessary re-renders
+  const Navigation = useMemo(() => (
+    <nav className="hidden lg:flex gap-1 mt-4 flex-wrap">
+      {Object.keys(MENU_ITEMS).map((item) => (
+        <div
+          key={item}
+          className="relative group"
+          onMouseEnter={() => setActiveDropdown(item)}
+          onMouseLeave={() => setActiveDropdown(null)}
+        >
+          <button className="px-4 py-2 hover:bg-blue-600 hover:text-white rounded-lg transition font-bold text-sm">
+            {item}
+          </button>
+          
+          {activeDropdown === item && (
+            <div className="absolute top-full left-0 mt-1 w-80 bg-white dark:bg-gray-800 shadow-xl rounded-lg p-6 z-50 border border-gray-200 dark:border-gray-700">
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{MENU_ITEMS[item].description}</p>
+              <ul className="space-y-2">
+                {MENU_ITEMS[item].links.map((link, idx) => (
+                  <li key={idx}>
+                    <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline text-sm block py-1">
+                      {link}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      ))}
+    </nav>
+  ), [activeDropdown]);
+
+  // Memoize the mobile navigation component
+  const MobileNavigation = useMemo(() => (
+    <nav className="lg:hidden mt-4 pb-4 space-y-2">
+      {Object.keys(MENU_ITEMS).map((item) => (
+        <div key={item} className="border-b border-gray-200 dark:border-gray-700 pb-2">
+          <button className="w-full text-left px-4 py-2 font-bold hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+            {item}
+          </button>
+        </div>
+      ))}
+      <button onClick={() => setDarkMode(!darkMode)} className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded flex items-center gap-2">
+        {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+        <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
+      </button>
+    </nav>
+  ), [darkMode]);
+
+  // Memoize the program cards to prevent unnecessary re-renders
+  const ProgramCards = useMemo(() => (
+    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {PROGRAMS.map((program, idx) => (
+        <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition transform hover:-translate-y-1 border border-gray-200 dark:border-gray-700">
+          <div className="bg-blue-600 text-white w-12 h-12 rounded-lg flex items-center justify-center mb-4 font-bold text-xl">
+            {idx + 1}
+          </div>
+          <h3 className="text-xl font-bold mb-3">{program.name}</h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-2">
+            <span className="font-semibold">Duration:</span> {program.duration}
+          </p>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <span className="font-semibold">Level:</span> {program.level}
+          </p>
+          <button className="text-blue-600 dark:text-blue-400 hover:underline font-semibold">
+            Learn More →
+          </button>
+        </div>
+      ))}
+    </div>
+  ), []);
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
@@ -782,51 +882,8 @@ WITH CHECK (true);
               </button>
             </div>
 
-            <nav className="hidden lg:flex gap-1 mt-4 flex-wrap">
-              {Object.keys(menuItems).map((item) => (
-                <div
-                  key={item}
-                  className="relative group"
-                  onMouseEnter={() => setActiveDropdown(item)}
-                  onMouseLeave={() => setActiveDropdown(null)}
-                >
-                  <button className="px-4 py-2 hover:bg-blue-600 hover:text-white rounded-lg transition font-bold text-sm">
-                    {item}
-                  </button>
-                  
-                  {activeDropdown === item && (
-                    <div className="absolute top-full left-0 mt-1 w-80 bg-white dark:bg-gray-800 shadow-xl rounded-lg p-6 z-50 border border-gray-200 dark:border-gray-700">
-                      <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{menuItems[item].description}</p>
-                      <ul className="space-y-2">
-                        {menuItems[item].links.map((link, idx) => (
-                          <li key={idx}>
-                            <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline text-sm block py-1">
-                              {link}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </nav>
-
-            {mobileMenuOpen && (
-              <nav className="lg:hidden mt-4 pb-4 space-y-2">
-                {Object.keys(menuItems).map((item) => (
-                  <div key={item} className="border-b border-gray-200 dark:border-gray-700 pb-2">
-                    <button className="w-full text-left px-4 py-2 font-bold hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-                      {item}
-                    </button>
-                  </div>
-                ))}
-                <button onClick={() => setDarkMode(!darkMode)} className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded flex items-center gap-2">
-                  {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-                  <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
-                </button>
-              </nav>
-            )}
+            {Navigation}
+            {mobileMenuOpen && MobileNavigation}
           </div>
         </header>
 
@@ -899,25 +956,7 @@ WITH CHECK (true);
             <p className="text-center text-gray-600 dark:text-gray-400 mb-12 max-w-2xl mx-auto">
               Industry-focused training programs designed to equip you with practical skills for immediate employment
             </p>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {programs.map((program, idx) => (
-                <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 hover:shadow-xl transition transform hover:-translate-y-1 border border-gray-200 dark:border-gray-700">
-                  <div className="bg-blue-600 text-white w-12 h-12 rounded-lg flex items-center justify-center mb-4 font-bold text-xl">
-                    {idx + 1}
-                  </div>
-                  <h3 className="text-xl font-bold mb-3">{program.name}</h3>
-                  <p className="text-gray-600 dark:text-gray-400 mb-2">
-                    <span className="font-semibold">Duration:</span> {program.duration}
-                  </p>
-                  <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    <span className="font-semibold">Level:</span> {program.level}
-                  </p>
-                  <button className="text-blue-600 dark:text-blue-400 hover:underline font-semibold">
-                    Learn More →
-                  </button>
-                </div>
-              ))}
-            </div>
+            {ProgramCards}
           </div>
         </section>
 
@@ -1041,35 +1080,9 @@ WITH CHECK (true);
           </div>
         </footer>
 
-        {showApplicationForm && <ApplicationForm />}
-        {showAdmissionForm && <AdmissionForm />}
+        {showApplicationForm && ApplicationForm}
+        {showAdmissionForm && AdmissionForm}
       </div>
-
-      {/* Add this inside your return statement, somewhere visible */}
-      <button 
-        onClick={async () => {
-          console.group('🧪 SUPABASE CONNECTION TEST');
-          console.log('URL:', import.meta.env.VITE_SUPABASE_URL);
-          console.log('Key exists:', !!import.meta.env.VITE_SUPABASE_ANON_KEY);
-    
-          try {
-            const { data, error, count } = await supabase
-              .from('applications')
-              .select('*', { count: 'exact', head: false })
-              .limit(1);
-      
-            console.log('Test query result:', { data, error, count });
-            alert(`Connection ${error ? 'FAILED' : 'SUCCESS'}! Check console.`);
-          } catch (err) {
-            console.error('Test failed:', err);
-            alert('Connection FAILED! Check console.');
-          }
-          console.groupEnd();
-        }}
-        className="fixed bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded z-50"
-      >
-        TEST DB
-      </button>
     </div>
   );
 }

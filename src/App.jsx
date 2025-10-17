@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Menu, X, Moon, Sun, Download, FileText, MapPin, Phone, Mail, ExternalLink, Upload, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { Menu, X, Moon, Sun, Download, FileText, MapPin, Phone, Mail, ExternalLink, Upload, CheckCircle, AlertCircle, Loader, ChevronRight, ArrowLeft } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 
 console.log('🔥 APP.JSX LOADED - Version 2.0 - ' + new Date().toISOString());
@@ -16,36 +16,216 @@ console.log('Anon key present:', !!supabaseAnonKey);
 console.log('Supabase client created:', !!supabase);
 console.groupEnd();
 
-// Memoize static data to prevent recreation on every render
+// Updated programs list with dynamic content
 const PROGRAMS = [
-  { name: 'HOSPITALITY & HOTEL MANAGEMENT', duration: '6 Months', level: 'Certificate' },
-  { name: 'INFORMATION TECHNOLOGY', duration: '6 Months', level: 'Certificate' },
-  { name: 'FASHION & DESIGN', duration: '6 Months', level: 'Certificate' },
-  { name: 'ELECTRICAL INSTALLATION', duration: '6 Months', level: 'Certificate' },
-  { name: 'PLUMBING', duration: '6 Months', level: 'Certificate' },
-  { name: 'WELDING & FABRICATION', duration: '6 Months', level: 'Certificate' },
+  { 
+    name: 'COMMUNICATION SKILLS', 
+    duration: '3 Months', 
+    level: 'Certificate',
+    description: 'Develop effective verbal and written communication techniques for professional environments.',
+    requirements: 'KCPE Certificate, Basic literacy skills',
+    modules: ['Verbal Communication', 'Written Communication', 'Presentation Skills', 'Interpersonal Skills']
+  },
+  { 
+    name: 'BUSINESS STUDIES', 
+    duration: '6 Months', 
+    level: 'Certificate',
+    description: 'Learn fundamental business concepts and practices for entrepreneurial success.',
+    requirements: 'KCPE Certificate, Basic numeracy skills',
+    modules: ['Business Mathematics', 'Accounting Principles', 'Business Management', 'Entrepreneurship']
+  },
+  { 
+    name: 'ICT', 
+    duration: '6 Months', 
+    level: 'Certificate',
+    description: 'Master essential computer skills and information technology concepts.',
+    requirements: 'KCPE Certificate, Basic computer literacy',
+    modules: ['Computer Fundamentals', 'Microsoft Office Suite', 'Internet Basics', 'Digital Security']
+  },
+  { 
+    name: 'MATHS', 
+    duration: '3 Months', 
+    level: 'Certificate',
+    description: 'Strengthen mathematical skills applicable to various vocational fields.',
+    requirements: 'KCPE Certificate',
+    modules: ['Basic Arithmetic', 'Algebra', 'Geometry', 'Applied Mathematics']
+  },
+  { 
+    name: 'LIFE SKILLS', 
+    duration: '3 Months', 
+    level: 'Certificate',
+    description: 'Develop essential personal and social skills for successful living.',
+    requirements: 'KCPE Certificate',
+    modules: ['Decision Making', 'Problem Solving', 'Financial Literacy', 'Personal Development']
+  },
+  { 
+    name: 'TOUR GUIDING', 
+    duration: '6 Months', 
+    level: 'Certificate',
+    description: 'Acquire knowledge and skills for professional tour guiding in the tourism industry.',
+    requirements: 'KCPE Certificate, Good communication skills',
+    modules: ['Tourism Principles', 'Customer Service', 'Local History & Culture', 'Tour Management'],
+    hasPractical: true
+  },
+  { 
+    name: 'PLUMBING', 
+    duration: '6 Months', 
+    level: 'Certificate',
+    description: 'Learn installation and maintenance of plumbing systems in residential and commercial buildings.',
+    requirements: 'KCPE Certificate, Physical fitness',
+    modules: ['Plumbing Tools & Materials', 'Pipe Installation', 'Drainage Systems', 'Safety Procedures'],
+    hasPractical: true
+  },
+  { 
+    name: 'HAIR DRESSING', 
+    duration: '6 Months', 
+    level: 'Certificate',
+    description: 'Master hair styling, cutting, and treatment techniques for professional salon services.',
+    requirements: 'KCPE Certificate, Creative aptitude',
+    modules: ['Hair Cutting Techniques', 'Hair Coloring', 'Chemical Treatments', 'Salon Management'],
+    hasPractical: true
+  },
+  { 
+    name: 'MASONRY', 
+    duration: '6 Months', 
+    level: 'Certificate',
+    description: 'Develop skills in bricklaying, concrete work, and general construction techniques.',
+    requirements: 'KCPE Certificate, Physical fitness',
+    modules: ['Building Materials', 'Bricklaying', 'Concrete Work', 'Construction Safety'],
+    hasPractical: true
+  },
+  { 
+    name: 'FOOD AND BEVERAGE', 
+    duration: '6 Months', 
+    level: 'Certificate',
+    description: 'Learn food preparation, service, and management for hospitality industry careers.',
+    requirements: 'KCPE Certificate, Food handler\'s certificate',
+    modules: ['Food Preparation', 'Beverage Service', 'Kitchen Management', 'Food Safety'],
+    hasPractical: true
+  },
+  { 
+    name: 'ELECTRICAL', 
+    duration: '6 Months', 
+    level: 'Certificate',
+    description: 'Gain skills in electrical installation, maintenance, and repair for residential and commercial settings.',
+    requirements: 'KCPE Certificate, Physical fitness, Good eyesight',
+    modules: ['Electrical Theory', 'Wiring Techniques', 'Appliance Repair', 'Safety Procedures'],
+    hasPractical: true
+  },
+  { 
+    name: 'DRESS MAKING AND TAILORY', 
+    duration: '6 Months', 
+    level: 'Certificate',
+    description: 'Master garment design, pattern making, and sewing techniques for fashion industry careers.',
+    requirements: 'KCPE Certificate, Creative aptitude',
+    modules: ['Fashion Design', 'Pattern Making', 'Sewing Techniques', 'Business Management'],
+    hasPractical: true
+  }
 ];
 
+// Updated menu items with dynamic content
 const MENU_ITEMS = {
   'ABOUT US': {
     description: 'Ilkarian Vocational Training Centre is a premier private institution dedicated to providing quality vocational education and practical skills training.',
-    links: ['Our Mission', 'Our Vision', 'History', 'Accreditation']
+    links: [
+      { 
+        name: 'Our Mission', 
+        content: 'Transform future lives through quality vocational training.',
+        details: 'We are committed to providing hands-on training that equips our students with practical skills needed in today\'s job market. Our mission is to empower individuals with knowledge and abilities that lead to meaningful employment and personal growth.'
+      },
+      { 
+        name: 'Our Vision', 
+        content: 'Be an excellence centre for skill development.',
+        details: 'We aspire to be recognized as the leading vocational training institution in Kenya, known for our innovative teaching methods, industry-relevant curriculum, and successful graduates who make positive contributions to society.'
+      },
+      { 
+        name: 'History', 
+        content: 'We have been involved in shaping the future of countless lives.',
+        details: 'Founded in 2010, Ilkarian VTC has grown from a small training center with 50 students to a thriving institution serving over 500 students annually. Our journey has been marked by continuous improvement, expansion of programs, and building strong industry partnerships.'
+      },
+      { 
+        name: 'Accreditation', 
+        content: 'Certified by the Kenya Ministry of Education.',
+        details: 'We are fully accredited by the Technical and Vocational Education and Training Authority (TVETA) and the Kenya Ministry of Education. Our programs meet national standards and our certificates are recognized nationwide.'
+      }
+    ]
   },
   'PROGRAMS': {
     description: 'We offer comprehensive vocational training programs designed to meet industry standards and prepare students for successful careers.',
-    links: PROGRAMS.map(p => p.name)
+    links: PROGRAMS.map(p => ({ 
+      name: p.name, 
+      duration: p.duration,
+      level: p.level,
+      description: p.description,
+      requirements: p.requirements,
+      modules: p.modules,
+      hasPractical: p.hasPractical || false
+    }))
   },
   'REQUIREMENTS': {
     description: 'Admission requirements include a minimum of KCPE certificate, completed application, 2 passport photos, and birth certificate copy.',
-    links: ['General Requirements', 'Program-Specific Requirements', 'International Students']
+    links: [
+      { 
+        name: 'General Requirements', 
+        content: 'Basic requirements for all programs',
+        details: 'All applicants must provide: KCPE certificate or equivalent, completed application form, two recent passport-size photographs, copy of birth certificate or national ID, and payment of application fee. Additional requirements may apply for specific programs.'
+      },
+      { 
+        name: 'Program-Specific Requirements', 
+        content: 'Additional requirements for certain programs',
+        details: 'Technical programs like Electrical, Plumbing, and Masonry require physical fitness and good eyesight. Creative programs like Hair Dressing and Dress Making require demonstration of artistic aptitude. Food and Beverage program requires a food handler\'s certificate.'
+      },
+      { 
+        name: 'International Students', 
+        content: 'Requirements for non-Kenyan applicants',
+        details: 'International students must provide: valid passport, student visa or permit, equivalent academic certificates, proof of medical insurance, and proof of financial support. Language proficiency in English is required for all programs.'
+      }
+    ]
   },
   'CONTACT': {
     description: 'Get in touch with us for inquiries, admissions information, or to schedule a campus visit.',
-    links: ['Phone: +254 XXX XXX XXX', 'Email: info@ilkarianvtc.ac.ke', 'Location: Nairobi, Kenya']
+    links: [
+      { 
+        name: 'Phone: +254 XXX XXX XXX', 
+        content: 'Call us during business hours',
+        details: 'Our office is open Monday to Friday, 8:00 AM to 5:00 PM. For urgent inquiries outside these hours, please leave a message and we will return your call the next business day.'
+      },
+      { 
+        name: 'Email: info@ilkarianvtc.ac.ke', 
+        content: 'Send us an email anytime',
+        details: 'We typically respond to emails within 24 hours during business days. For admissions inquiries, please include your full name and program of interest in the subject line.'
+      },
+      { 
+        name: 'Location: Nairobi, Kenya', 
+        content: 'Visit our campus',
+        details: 'We are located in the heart of Nairobi, easily accessible by public transportation. Campus tours are available by appointment. Please call or email to schedule a visit.'
+      }
+    ]
   },
   'VISIT US': {
     description: 'Schedule a visit to our modern campus facilities. See our workshops, labs, and meet our experienced instructors.',
-    links: ['Schedule a Visit', 'Virtual Tour', 'Directions', 'Campus Map']
+    links: [
+      { 
+        name: 'Schedule a Visit', 
+        content: 'Book a campus tour',
+        details: 'Campus tours are available Monday to Friday, 9:00 AM to 4:00 PM. Tours typically last 60-90 minutes and include visits to our workshops, classrooms, and facilities. Please book at least 24 hours in advance.'
+      },
+      { 
+        name: 'Virtual Tour', 
+        content: 'Explore our campus online',
+        details: 'Can\'t visit in person? Take our virtual tour to explore our facilities from anywhere. The virtual tour includes 360° views of our workshops, classrooms, and common areas.'
+      },
+      { 
+        name: 'Directions', 
+        content: 'How to find us',
+        details: 'We are located on Thika Road, 5km from Nairobi CBD. Public transport options include buses number 11, 12, and 45. For those driving, secure parking is available on campus.'
+      },
+      { 
+        name: 'Campus Map', 
+        content: 'Navigate our campus',
+        details: 'Download our campus map to easily find your way around. The map shows the location of all buildings, workshops, classrooms, and facilities. Printed copies are available at the reception.'
+      }
+    ]
   }
 };
 
@@ -60,6 +240,9 @@ export default function IlkarianVTC() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState(null);
   const [formErrors, setFormErrors] = useState({});
+  const [selectedProgram, setSelectedProgram] = useState(null);
+  const [mobileDetailPage, setMobileDetailPage] = useState(null);
+  const [mobileDetailContent, setMobileDetailContent] = useState(null);
   
   // Refs to track timeouts for debouncing
   const validationTimeoutRef = useRef(null);
@@ -781,6 +964,88 @@ WITH CHECK (true);
     </div>
   ), [formData, formErrors, isSubmitting, submitStatus, uploadedFiles, handleInputChange, handleFileUpload, removeFile, handleAdmissionSubmit]);
 
+  // Program details modal
+  const ProgramDetailsModal = useMemo(() => {
+    if (!selectedProgram) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+        <div className="bg-white dark:bg-gray-800 rounded-lg max-w-3xl w-full my-8 p-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{selectedProgram.name}</h2>
+            <button 
+              onClick={() => setSelectedProgram(null)}
+              className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            >
+              <X size={24} />
+            </button>
+          </div>
+          
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-blue-50 dark:bg-blue-900 p-4 rounded-lg">
+                <h3 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">Duration</h3>
+                <p className="text-gray-700 dark:text-gray-300">{selectedProgram.duration}</p>
+              </div>
+              <div className="bg-green-50 dark:bg-green-900 p-4 rounded-lg">
+                <h3 className="font-semibold text-green-800 dark:text-green-200 mb-2">Level</h3>
+                <p className="text-gray-700 dark:text-gray-300">{selectedProgram.level}</p>
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">
+              <h3 className="font-semibold mb-2">Description</h3>
+              <p className="text-gray-700 dark:text-gray-300">{selectedProgram.description}</p>
+            </div>
+            
+            <div className="bg-yellow-50 dark:bg-yellow-900 p-4 rounded-lg">
+              <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-2">Requirements</h3>
+              <p className="text-gray-700 dark:text-gray-300">{selectedProgram.requirements}</p>
+            </div>
+            
+            <div className="bg-purple-50 dark:bg-purple-900 p-4 rounded-lg">
+              <h3 className="font-semibold text-purple-800 dark:text-purple-200 mb-2">Course Modules</h3>
+              <ul className="list-disc list-inside text-gray-700 dark:text-gray-300">
+                {selectedProgram.modules.map((module, idx) => (
+                  <li key={idx}>{module}</li>
+                ))}
+              </ul>
+            </div>
+            
+            {selectedProgram.hasPractical && (
+              <div className="bg-orange-50 dark:bg-orange-900 p-4 rounded-lg">
+                <h3 className="font-semibold text-orange-800 dark:text-orange-200 mb-2">Practical Training</h3>
+                <p className="text-gray-700 dark:text-gray-300">
+                  This program includes hands-on practical training sessions where students will apply theoretical knowledge in real-world scenarios. 
+                  Practical sessions are conducted in our modern workshops under the guidance of experienced instructors.
+                </p>
+              </div>
+            )}
+            
+            <div className="flex gap-4">
+              <button 
+                onClick={() => {
+                  setSelectedProgram(null);
+                  setShowApplicationForm(true);
+                  setFormData({...formData, program: selectedProgram.name});
+                }}
+                className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-semibold"
+              >
+                APPLY FOR THIS PROGRAM
+              </button>
+              <button 
+                onClick={() => setSelectedProgram(null)}
+                className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-white py-3 rounded-lg hover:bg-gray-400 transition font-semibold"
+              >
+                CLOSE
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }, [selectedProgram, formData, setFormData]);
+
   // Memoize the navigation component to prevent unnecessary re-renders
   const Navigation = useMemo(() => (
     <nav className="hidden lg:flex gap-1 mt-4 flex-wrap">
@@ -801,9 +1066,34 @@ WITH CHECK (true);
               <ul className="space-y-2">
                 {MENU_ITEMS[item].links.map((link, idx) => (
                   <li key={idx}>
-                    <a href="#" className="text-blue-600 dark:text-blue-400 hover:underline text-sm block py-1">
-                      {link}
-                    </a>
+                    {item === 'PROGRAMS' ? (
+                      <div 
+                        className="text-blue-600 dark:text-blue-400 hover:underline text-sm block py-1 cursor-pointer"
+                        onClick={() => setSelectedProgram(link)}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span>{link.name}</span>
+                          <ChevronRight size={16} />
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          {link.duration} • {link.level}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="group/submenu">
+                        <div className="text-blue-600 dark:text-blue-400 hover:underline text-sm block py-1 cursor-pointer">
+                          <div className="flex justify-between items-center">
+                            <span>{link.name}</span>
+                            <ChevronRight size={16} />
+                          </div>
+                        </div>
+                        <div className="absolute left-full top-0 ml-2 w-80 bg-white dark:bg-gray-800 shadow-xl rounded-lg p-6 z-50 border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover/submenu:opacity-100 group-hover/submenu:visible transition-all duration-200">
+                          <h4 className="font-semibold text-gray-900 dark:text-white mb-2">{link.name}</h4>
+                          <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{link.content}</p>
+                          <p className="text-sm text-gray-700 dark:text-gray-400">{link.details}</p>
+                        </div>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -812,24 +1102,95 @@ WITH CHECK (true);
         </div>
       ))}
     </nav>
-  ), [activeDropdown]);
+  ), [activeDropdown, setSelectedProgram]);
 
   // Memoize the mobile navigation component
-  const MobileNavigation = useMemo(() => (
-    <nav className="lg:hidden mt-4 pb-4 space-y-2">
-      {Object.keys(MENU_ITEMS).map((item) => (
-        <div key={item} className="border-b border-gray-200 dark:border-gray-700 pb-2">
-          <button className="w-full text-left px-4 py-2 font-bold hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
-            {item}
-          </button>
+  const MobileNavigation = useMemo(() => {
+    if (mobileDetailPage) {
+      return (
+        <div className="lg:hidden mt-4 pb-4">
+          <div className="flex items-center gap-2 mb-4">
+            <button 
+              onClick={() => setMobileDetailPage(null)}
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <h3 className="font-bold text-lg">{mobileDetailPage.title}</h3>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg">
+            <p className="text-gray-600 dark:text-gray-300 mb-4">{mobileDetailPage.content}</p>
+            <p className="text-gray-700 dark:text-gray-400">{mobileDetailPage.details}</p>
+          </div>
         </div>
-      ))}
-      <button onClick={() => setDarkMode(!darkMode)} className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded flex items-center gap-2">
-        {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-        <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
-      </button>
-    </nav>
-  ), [darkMode]);
+      );
+    }
+    
+    return (
+      <nav className="lg:hidden mt-4 pb-4 space-y-2">
+        {Object.keys(MENU_ITEMS).map((item) => (
+          <div key={item} className="border-b border-gray-200 dark:border-gray-700 pb-2">
+            <button 
+              className="w-full text-left px-4 py-2 font-bold hover:bg-gray-100 dark:hover:bg-gray-800 rounded flex items-center justify-between transition-all duration-200 hover:translate-x-1"
+              onClick={() => {
+                if (item === 'PROGRAMS') {
+                  setMobileDetailPage({
+                    title: item,
+                    content: MENU_ITEMS[item].description,
+                    details: "Select a program below to view details:"
+                  });
+                  setMobileDetailContent(MENU_ITEMS[item].links);
+                } else {
+                  setMobileDetailPage({
+                    title: item,
+                    content: MENU_ITEMS[item].description,
+                    details: "Select an option below to view details:"
+                  });
+                  setMobileDetailContent(MENU_ITEMS[item].links);
+                }
+              }}
+            >
+              {item}
+              <ChevronRight size={20} />
+            </button>
+          </div>
+        ))}
+        
+        {mobileDetailContent && (
+          <div className="mt-4 space-y-2">
+            {mobileDetailContent.map((link, idx) => (
+              <button
+                key={idx}
+                className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded flex items-center justify-between transition-all duration-200 hover:translate-x-1"
+                onClick={() => {
+                  if (mobileDetailPage.title === 'PROGRAMS') {
+                    setSelectedProgram(link);
+                    setMobileDetailPage(null);
+                    setMobileDetailContent(null);
+                  } else {
+                    setMobileDetailPage({
+                      title: link.name,
+                      content: link.content,
+                      details: link.details
+                    });
+                    setMobileDetailContent(null);
+                  }
+                }}
+              >
+                <span>{link.name}</span>
+                <ChevronRight size={16} />
+              </button>
+            ))}
+          </div>
+        )}
+        
+        <button onClick={() => setDarkMode(!darkMode)} className="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded flex items-center gap-2">
+          {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+          <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
+        </button>
+      </nav>
+    );
+  }, [darkMode, mobileDetailPage, mobileDetailContent, setSelectedProgram]);
 
   // Memoize the program cards to prevent unnecessary re-renders
   const ProgramCards = useMemo(() => (
@@ -846,13 +1207,16 @@ WITH CHECK (true);
           <p className="text-gray-600 dark:text-gray-400 mb-4">
             <span className="font-semibold">Level:</span> {program.level}
           </p>
-          <button className="text-blue-600 dark:text-blue-400 hover:underline font-semibold">
-            Learn More →
+          <button 
+            className="text-blue-600 dark:text-blue-400 hover:underline font-semibold flex items-center gap-1"
+            onClick={() => setSelectedProgram(program)}
+          >
+            Learn More <ChevronRight size={16} />
           </button>
         </div>
       ))}
     </div>
-  ), []);
+  ), [setSelectedProgram]);
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark' : ''}`}>
@@ -1082,6 +1446,7 @@ WITH CHECK (true);
 
         {showApplicationForm && ApplicationForm}
         {showAdmissionForm && AdmissionForm}
+        {selectedProgram && ProgramDetailsModal}
       </div>
     </div>
   );
